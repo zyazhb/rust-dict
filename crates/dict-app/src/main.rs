@@ -3,6 +3,7 @@ mod bundled;
 mod app;
 mod float;
 mod fonts;
+mod hotkey;
 mod i18n;
 
 use app::DictApp;

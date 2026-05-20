@@ -124,6 +124,7 @@ impl UserDb {
                 }
                 "show_traditional" => settings.show_traditional = v == "true",
                 "locale" => settings.locale = v,
+                "compact_hotkey" => settings.compact_hotkey = v,
                 _ => {}
             }
         }
@@ -142,6 +143,7 @@ impl UserDb {
             ),
             ("show_traditional", settings.show_traditional.to_string()),
             ("locale", settings.locale.clone()),
+            ("compact_hotkey", settings.compact_hotkey.clone()),
         ];
         for (key, value) in pairs {
             self.conn.execute(

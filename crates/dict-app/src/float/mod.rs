@@ -35,7 +35,21 @@ pub(crate) enum ViewportLayout {
 }
 
 impl DictApp {
+    fn collapse_float_on_blur(&mut self, ctx: &egui::Context) {
+        if !matches!(self.ui_mode, UiMode::Float(FloatState::Expanded)) {
+            self.float_viewport_focused = None;
+            return;
+        }
+        let focused = ctx.input(|i| i.focused);
+        if self.float_viewport_focused == Some(true) && !focused {
+            self.collapse_float(ctx);
+            return;
+        }
+        self.float_viewport_focused = Some(focused);
+    }
+
     pub fn update_float(&mut self, ctx: &egui::Context) {
+        self.collapse_float_on_blur(ctx);
         self.sync_viewport(ctx);
         match self.ui_mode {
             UiMode::Float(FloatState::Collapsed) => self.ui_float_collapsed(ctx),
@@ -47,14 +61,23 @@ impl DictApp {
     pub fn expand_float(&mut self, ctx: &egui::Context) {
         self.ui_mode = UiMode::Float(FloatState::Expanded);
         self.float_focus_search = true;
+        self.float_viewport_focused = Some(ctx.input(|i| i.focused));
         self.sync_viewport(ctx);
         ctx.send_viewport_cmd(ViewportCommand::Focus);
         ctx.request_repaint();
     }
 
+    /// Show the compact search panel (global hotkey and “open float” actions).
+    pub fn show_compact_float(&mut self, ctx: &egui::Context) {
+        self.last_viewport = None;
+        ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+        self.expand_float(ctx);
+    }
+
     pub fn collapse_float(&mut self, ctx: &egui::Context) {
         self.ui_mode = UiMode::Float(FloatState::Collapsed);
         self.float_focus_search = false;
+        self.float_viewport_focused = None;
         self.sync_viewport(ctx);
         ctx.request_repaint();
     }

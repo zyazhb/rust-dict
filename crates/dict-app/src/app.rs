@@ -11,6 +11,7 @@ use dict_db::{AppSettings, CedictDb, HistoryRecord, SavedWord, SearchMode, UserD
 use eframe::egui;
 
 use crate::float::{FloatState, UiMode};
+use crate::hotkey::GlobalHotkeys;
 use crate::i18n::{I18n, Locale};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -49,6 +50,10 @@ pub struct DictApp {
     pub(crate) last_viewport: Option<crate::float::ViewportLayout>,
     /// After expanding from the float icon, focus the compact search field.
     pub(crate) float_focus_search: bool,
+    /// Previous frame viewport focus (compact expanded auto-collapses on blur).
+    pub(crate) float_viewport_focused: Option<bool>,
+    hotkeys: Option<GlobalHotkeys>,
+    hotkey_capturing: bool,
 }
 
 struct OnlineSearchResult {
@@ -58,7 +63,7 @@ struct OnlineSearchResult {
 }
 
 impl DictApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let data_dir = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("eng-dict");
@@ -87,6 +92,11 @@ impl DictApp {
         } else {
             i18n.status_dict_not_found(&settings.cedict_path)
         };
+        crate::hotkey::install_wakeup_handler(cc.egui_ctx.clone());
+        let hotkeys = GlobalHotkeys::register(settings.compact_hotkey.as_str()).ok();
+        if let Some(ref hotkeys) = hotkeys {
+            hotkeys.sync_wakeup_id();
+        }
         Self {
             router: QueryRouter::default(),
             cedict,
@@ -114,6 +124,39 @@ impl DictApp {
             ui_mode: UiMode::Float(FloatState::Collapsed),
             last_viewport: None,
             float_focus_search: false,
+            float_viewport_focused: None,
+            hotkeys,
+            hotkey_capturing: false,
+        }
+    }
+
+    fn reload_hotkeys(&mut self) {
+        let hotkey_str = crate::hotkey::effective_hotkey_str(&self.settings.compact_hotkey);
+        if let Some(ref mut hotkeys) = self.hotkeys {
+            if hotkeys.set_hotkey(hotkey_str).is_err() {
+                self.hotkeys = GlobalHotkeys::register(hotkey_str).ok();
+            }
+        } else {
+            self.hotkeys = GlobalHotkeys::register(hotkey_str).ok();
+        }
+        if let Some(ref hotkeys) = self.hotkeys {
+            hotkeys.sync_wakeup_id();
+        }
+    }
+
+    fn apply_compact_hotkey(&mut self, hotkey_str: String) {
+        self.settings.compact_hotkey = hotkey_str;
+        self.reload_hotkeys();
+        let _ = self.user.save_settings(&self.settings);
+        self.status = self.i18n.status_hotkey_saved();
+    }
+
+    fn poll_hotkeys(&mut self, ctx: &egui::Context) {
+        let Some(ref hotkeys) = self.hotkeys else {
+            return;
+        };
+        if hotkeys.poll_compact_float() {
+            self.show_compact_float(ctx);
         }
     }
 
@@ -333,6 +376,7 @@ impl DictApp {
 
 impl eframe::App for DictApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_hotkeys(ctx);
         self.poll_online();
 
         if self.pending_search {
@@ -387,9 +431,7 @@ impl eframe::App for DictApp {
                 }
                 ui.separator();
                 if ui.button(self.i18n.t("float_open")).clicked() {
-                    self.ui_mode = UiMode::Float(FloatState::Collapsed);
-                    self.last_viewport = None;
-                    self.collapse_float(ctx);
+                    self.show_compact_float(ctx);
                 }
                 ui.label(egui::RichText::new(&self.status).small().weak());
             });
@@ -581,6 +623,48 @@ impl DictApp {
         }
     }
 
+    fn ui_hotkey_field(&mut self, ui: &mut egui::Ui) {
+        ui.label(self.i18n.t("hotkey_compact"));
+        let label = if self.hotkey_capturing {
+            self.i18n.t("hotkey_press").to_string()
+        } else {
+            crate::hotkey::format_label(&self.settings.compact_hotkey)
+        };
+        let stroke = if self.hotkey_capturing {
+            egui::Stroke::new(2.0, ui.visuals().selection.stroke.color)
+        } else {
+            ui.visuals().widgets.noninteractive.bg_stroke
+        };
+        let button = egui::Button::new(egui::RichText::new(label).monospace().strong())
+            .min_size(egui::vec2(200.0, 28.0));
+        let resp = ui.add(button).on_hover_text(self.i18n.t("hotkey_click_hint"));
+        ui.painter().rect_stroke(
+            resp.rect.expand(1.0),
+            4.0,
+            stroke,
+            egui::StrokeKind::Outside,
+        );
+        if resp.clicked() {
+            self.hotkey_capturing = true;
+            resp.request_focus();
+        }
+        if self.hotkey_capturing {
+            resp.request_focus();
+            match crate::hotkey::capture_from_input(ui.ctx()) {
+                None => {}
+                Some(None) => self.hotkey_capturing = false,
+                Some(Some(s)) => {
+                    self.hotkey_capturing = false;
+                    if parse_hotkey_ok(&s) {
+                        self.apply_compact_hotkey(s);
+                    } else {
+                        self.status = self.i18n.status_hotkey_invalid();
+                    }
+                }
+            }
+        }
+    }
+
     fn ui_settings(&mut self, ui: &mut egui::Ui) {
         ui.heading(self.i18n.t("settings_heading"));
         ui.label(self.i18n.t("language"));
@@ -594,6 +678,8 @@ impl DictApp {
             ui.ctx()
                 .send_viewport_cmd(egui::ViewportCommand::Title(self.window_title.clone()));
         }
+        ui.separator();
+        self.ui_hotkey_field(ui);
         ui.separator();
         ui.label(self.i18n.t("cedict_path"));
         ui.text_edit_singleline(&mut self.cedict_path_edit);
@@ -627,6 +713,10 @@ impl DictApp {
         ui.separator();
         ui.label(self.i18n.t("license"));
     }
+}
+
+fn parse_hotkey_ok(s: &str) -> bool {
+    crate::hotkey::parse_hotkey(s).is_ok()
 }
 
 fn default_cedict_path() -> String {

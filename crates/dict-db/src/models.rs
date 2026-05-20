@@ -65,4 +65,6 @@ pub struct AppSettings {
     pub show_traditional: bool,
     /// UI locale: "en" or "zh"
     pub locale: String,
+    /// Global shortcut for compact float search (`global-hotkey` format, e.g. `super+control+KeyD`).
+    pub compact_hotkey: String,
 }

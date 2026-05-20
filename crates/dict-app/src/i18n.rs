@@ -111,6 +111,12 @@ impl I18n {
             (Locale::Zh, "float_full") => "完整",
             (Locale::En, "float_open") => "Float",
             (Locale::Zh, "float_open") => "悬浮",
+            (Locale::En, "hotkey_compact") => "Global shortcut (compact search)",
+            (Locale::Zh, "hotkey_compact") => "全局快捷键（紧凑搜索）",
+            (Locale::En, "hotkey_press") => "Press keys…",
+            (Locale::Zh, "hotkey_press") => "请按下快捷键…",
+            (Locale::En, "hotkey_click_hint") => "Click, then press a key combination",
+            (Locale::Zh, "hotkey_click_hint") => "点击后按下组合键",
 
             // Badges
             (Locale::En, "badge_exact") => "exact",
@@ -194,6 +200,20 @@ impl I18n {
         match self.locale {
             Locale::En => "Saved".into(),
             Locale::Zh => "已收藏".into(),
+        }
+    }
+
+    pub fn status_hotkey_saved(&self) -> String {
+        match self.locale {
+            Locale::En => "Shortcut updated".to_string(),
+            Locale::Zh => "快捷键已更新".to_string(),
+        }
+    }
+
+    pub fn status_hotkey_invalid(&self) -> String {
+        match self.locale {
+            Locale::En => "Invalid shortcut".to_string(),
+            Locale::Zh => "无效的快捷键".to_string(),
         }
     }
 
