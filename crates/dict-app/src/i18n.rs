@@ -105,6 +105,12 @@ impl I18n {
             (Locale::Zh, "save_settings") => "保存设置",
             (Locale::En, "license") => "CC-CEDICT © MDBG / CC BY-SA 3.0",
             (Locale::Zh, "license") => "CC-CEDICT © MDBG / CC BY-SA 3.0",
+            (Locale::En, "float_collapse") => "−",
+            (Locale::Zh, "float_collapse") => "收起",
+            (Locale::En, "float_full") => "Full",
+            (Locale::Zh, "float_full") => "完整",
+            (Locale::En, "float_open") => "Float",
+            (Locale::Zh, "float_open") => "悬浮",
 
             // Badges
             (Locale::En, "badge_exact") => "exact",

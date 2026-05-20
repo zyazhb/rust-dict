@@ -10,6 +10,7 @@ use dict_core::{
 use dict_db::{AppSettings, CedictDb, HistoryRecord, SavedWord, SearchMode, UserDb};
 use eframe::egui;
 
+use crate::float::{FloatState, UiMode};
 use crate::i18n::{I18n, Locale};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -21,29 +22,31 @@ pub enum AppTab {
 }
 
 pub struct DictApp {
-    router: QueryRouter,
-    cedict: Option<CedictDb>,
-    user: UserDb,
-    settings: AppSettings,
-    tab: AppTab,
-    query: String,
-    pinyin_mode: bool,
-    search_mode: SearchMode,
-    results: Vec<RankedCandidate>,
-    status: String,
-    last_search_at: Option<Instant>,
-    pending_search: bool,
-    history: Vec<HistoryRecord>,
-    saved: Vec<SavedWord>,
-    saved_filter: String,
-    note_edit_id: Option<i64>,
-    note_edit_text: String,
+    pub(crate) router: QueryRouter,
+    pub(crate) cedict: Option<CedictDb>,
+    pub(crate) user: UserDb,
+    pub(crate) settings: AppSettings,
+    pub(crate) tab: AppTab,
+    pub(crate) query: String,
+    pub(crate) pinyin_mode: bool,
+    pub(crate) search_mode: SearchMode,
+    pub(crate) results: Vec<RankedCandidate>,
+    pub(crate) status: String,
+    pub(crate) last_search_at: Option<Instant>,
+    pub(crate) pending_search: bool,
+    pub(crate) history: Vec<HistoryRecord>,
+    pub(crate) saved: Vec<SavedWord>,
+    pub(crate) saved_filter: String,
+    pub(crate) note_edit_id: Option<i64>,
+    pub(crate) note_edit_text: String,
     online_rx: Option<mpsc::Receiver<OnlineSearchResult>>,
-    force_online_next: bool,
-    cedict_path_edit: String,
-    i18n: I18n,
-    locale_edit: Locale,
-    window_title: String,
+    pub(crate) force_online_next: bool,
+    pub(crate) cedict_path_edit: String,
+    pub(crate) i18n: I18n,
+    pub(crate) locale_edit: Locale,
+    pub(crate) window_title: String,
+    pub(crate) ui_mode: UiMode,
+    pub(crate) last_viewport: Option<crate::float::ViewportLayout>,
 }
 
 struct OnlineSearchResult {
@@ -106,6 +109,8 @@ impl DictApp {
             i18n,
             locale_edit,
             window_title,
+            ui_mode: UiMode::Float(FloatState::Collapsed),
+            last_viewport: None,
         }
     }
 
@@ -317,7 +322,7 @@ impl DictApp {
         }
     }
 
-    fn schedule_debounced_search(&mut self) {
+    pub(crate) fn schedule_debounced_search(&mut self) {
         self.pending_search = true;
         self.last_search_at = Some(Instant::now());
     }
@@ -336,6 +341,12 @@ impl eframe::App for DictApp {
                     self.pending_search = false;
                 }
             }
+        }
+
+        if matches!(self.ui_mode, UiMode::Float(_)) {
+            self.update_float(ctx);
+            self.schedule_repaint_if_needed(ctx);
+            return;
         }
 
         let side_w = if self.i18n.locale == Locale::Zh { 130.0 } else { 120.0 };
@@ -372,6 +383,11 @@ impl eframe::App for DictApp {
                     self.tab = AppTab::Settings;
                 }
                 ui.separator();
+                if ui.button(self.i18n.t("float_open")).clicked() {
+                    self.ui_mode = UiMode::Float(FloatState::Collapsed);
+                    self.last_viewport = None;
+                    self.collapse_float(ctx);
+                }
                 ui.label(egui::RichText::new(&self.status).small().weak());
             });
 

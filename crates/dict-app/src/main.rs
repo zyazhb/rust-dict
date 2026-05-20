@@ -1,4 +1,5 @@
 mod app;
+mod float;
 mod fonts;
 mod i18n;
 
@@ -7,7 +8,12 @@ use eframe::egui;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([960.0, 640.0]),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([52.0, 52.0])
+            .with_min_inner_size([52.0, 52.0])
+            .with_always_on_top()
+            .with_decorations(false)
+            .with_resizable(false),
         ..Default::default()
     };
     eframe::run_native(
