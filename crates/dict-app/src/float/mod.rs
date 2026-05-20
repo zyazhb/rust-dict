@@ -139,8 +139,8 @@ impl DictApp {
                 );
                 ui.selectable_value(
                     &mut self.search_mode,
-                    SearchMode::EnToEn,
-                    self.i18n.t("mode_en_en"),
+                    SearchMode::EnToCn,
+                    self.i18n.t("mode_en_cn"),
                 );
                 if self.search_mode == SearchMode::ZhToEn {
                     ui.checkbox(&mut self.pinyin_mode, self.i18n.t("pinyin"));

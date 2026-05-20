@@ -9,7 +9,7 @@ mod rank;
 mod router;
 mod zh_pipeline;
 
-pub use en_pipeline::EnSuggestPipeline;
+pub use en_pipeline::{EnSuggestPipeline, EnToCnPipeline};
 pub use error::{CoreError, Result};
 pub use online::{
     dto_to_ranked, HttpOnlineProvider, MockOnlineProvider, OnlineCandidateDto, OnlineProvider,

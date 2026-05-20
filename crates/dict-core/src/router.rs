@@ -1,6 +1,6 @@
 use dict_db::{CedictDb, SearchMode, UserDb};
 
-use crate::en_pipeline::EnSuggestPipeline;
+use crate::en_pipeline::EnToCnPipeline;
 use crate::normalize::{is_latin_input, normalize_query};
 use crate::online::{OnlineProvider, dto_to_ranked};
 use crate::rank::RankedCandidate;
@@ -29,11 +29,11 @@ impl QueryRouter {
         }
         match mode {
             SearchMode::ZhToEn => self.zh.search(cedict, &q, pinyin_mode, use_trad, boosts),
-            SearchMode::EnToEn => {
+            SearchMode::EnToCn => {
                 if !is_latin_input(&q) {
                     return self.zh.search(cedict, &q, pinyin_mode, use_trad, boosts);
                 }
-                EnSuggestPipeline::search(cedict, &q, boosts)
+                EnToCnPipeline::search(cedict, &q, boosts)
             }
         }
     }

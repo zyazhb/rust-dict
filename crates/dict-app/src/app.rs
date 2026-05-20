@@ -93,7 +93,7 @@ impl DictApp {
             tab: AppTab::Search,
             query: String::new(),
             pinyin_mode: false,
-            search_mode: SearchMode::ZhToEn,
+            search_mode: SearchMode::ZhToEn, // default 中文→英文
             results: vec![],
             status,
             last_search_at: None,
@@ -413,8 +413,8 @@ impl DictApp {
             );
             ui.selectable_value(
                 &mut self.search_mode,
-                SearchMode::EnToEn,
-                self.i18n.t("mode_en_en"),
+                SearchMode::EnToCn,
+                self.i18n.t("mode_en_cn"),
             );
             if self.search_mode == SearchMode::ZhToEn {
                 ui.checkbox(&mut self.pinyin_mode, self.i18n.t("pinyin"));
@@ -509,7 +509,7 @@ impl DictApp {
                 let mode_label = if h.mode == SearchMode::ZhToEn {
                     self.i18n.t("hist_zh_en")
                 } else {
-                    self.i18n.t("hist_en_en")
+                    self.i18n.t("hist_en_cn")
                 };
                 let label = format!("{} — {}", h.query, mode_label);
                 if ui.button(label).clicked() {

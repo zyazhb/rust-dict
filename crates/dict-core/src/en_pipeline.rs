@@ -70,3 +70,41 @@ impl EnSuggestPipeline {
         Ok(rank_candidates(raw, &ctx, MAX_RESULTS))
     }
 }
+
+/// English word in → Chinese headwords out (direct dictionary hits, no related-English expansion).
+pub struct EnToCnPipeline;
+
+impl EnToCnPipeline {
+    pub fn search(
+        db: &CedictDb,
+        query: &str,
+        boosts: Vec<(String, String)>,
+    ) -> Result<Vec<RankedCandidate>> {
+        let q = normalize_input(query);
+        if q.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut raw = Vec::new();
+        let mut seen_ids = HashSet::new();
+
+        for e in db.lookup_english_prefix(&q)? {
+            if seen_ids.insert(e.id) {
+                raw.push((e, MatchKind::EnglishPrefix, q.clone()));
+            }
+        }
+
+        if raw.len() < MAX_RESULTS {
+            if let Ok(fts) = db.lookup_english_fts(&q) {
+                for e in fts {
+                    if seen_ids.insert(e.id) {
+                        raw.push((e, MatchKind::EnglishFts, q.clone()));
+                    }
+                }
+            }
+        }
+
+        let ctx = RankContext::new(&q, boosts);
+        Ok(rank_candidates(raw, &ctx, MAX_RESULTS))
+    }
+}

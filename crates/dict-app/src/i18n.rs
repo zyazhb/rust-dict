@@ -51,8 +51,8 @@ impl I18n {
             (Locale::Zh, "search_heading") => "搜索",
             (Locale::En, "mode_zh_en") => "中文→英文",
             (Locale::Zh, "mode_zh_en") => "中文→英文",
-            (Locale::En, "mode_en_en") => "英文→英文",
-            (Locale::Zh, "mode_en_en") => "英文→英文",
+            (Locale::En, "mode_en_cn") => "EN→CN",
+            (Locale::Zh, "mode_en_cn") => "英文→中文",
             (Locale::En, "pinyin") => "Pinyin",
             (Locale::Zh, "pinyin") => "拼音",
             (Locale::En, "search_now") => "Search now",
@@ -127,8 +127,8 @@ impl I18n {
             // Mode labels in history
             (Locale::En, "hist_zh_en") => "ZH→EN",
             (Locale::Zh, "hist_zh_en") => "中→英",
-            (Locale::En, "hist_en_en") => "EN→EN",
-            (Locale::Zh, "hist_en_en") => "英→英",
+            (Locale::En, "hist_en_cn") => "EN→CN",
+            (Locale::Zh, "hist_en_cn") => "英→中",
 
             _ => key,
         }

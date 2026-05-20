@@ -3,21 +3,23 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SearchMode {
     ZhToEn,
-    EnToEn,
+    EnToCn,
 }
 
 impl SearchMode {
     pub fn as_str(&self) -> &'static str {
         match self {
             SearchMode::ZhToEn => "zh_to_en",
-            SearchMode::EnToEn => "en_to_en",
+            SearchMode::EnToCn => "en_to_cn",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "zh_to_en" => Some(SearchMode::ZhToEn),
-            "en_to_en" => Some(SearchMode::EnToEn),
+            "en_to_cn" => Some(SearchMode::EnToCn),
+            // legacy history rows
+            "en_to_en" => Some(SearchMode::EnToCn),
             _ => None,
         }
     }
