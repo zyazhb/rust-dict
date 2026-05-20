@@ -1,3 +1,5 @@
+#[cfg(feature = "bundled-dict")]
+mod bundled;
 mod app;
 mod float;
 mod fonts;

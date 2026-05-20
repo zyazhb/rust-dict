@@ -7,6 +7,10 @@ edition.workspace = true
 name = "dict-app"
 path = "src/main.rs"
 
+[features]
+default = []
+bundled-dict = []
+
 [dependencies]
 dict-core = { path = "../dict-core" }
 dict-db = { path = "../dict-db" }

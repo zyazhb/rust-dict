@@ -46,6 +46,7 @@ impl DictApp {
 
     pub fn expand_float(&mut self, ctx: &egui::Context) {
         self.ui_mode = UiMode::Float(FloatState::Expanded);
+        self.float_focus_search = true;
         self.sync_viewport(ctx);
         ctx.send_viewport_cmd(ViewportCommand::Focus);
         ctx.request_repaint();
@@ -53,6 +54,7 @@ impl DictApp {
 
     pub fn collapse_float(&mut self, ctx: &egui::Context) {
         self.ui_mode = UiMode::Float(FloatState::Collapsed);
+        self.float_focus_search = false;
         self.sync_viewport(ctx);
         ctx.request_repaint();
     }
@@ -147,14 +149,19 @@ impl DictApp {
                 }
             });
 
-            let changed = ui
-                .add(
-                    egui::TextEdit::singleline(&mut self.query)
-                        .hint_text(self.i18n.t("query_hint"))
-                        .desired_width(f32::INFINITY),
-                )
-                .changed();
-            if changed {
+            let search_resp = ui.add(
+                egui::TextEdit::singleline(&mut self.query)
+                    .id(Id::new("float_query"))
+                    .hint_text(self.i18n.t("query_hint"))
+                    .desired_width(f32::INFINITY),
+            );
+            if self.float_focus_search {
+                search_resp.request_focus();
+                if search_resp.has_focus() {
+                    self.float_focus_search = false;
+                }
+            }
+            if search_resp.changed() {
                 self.schedule_debounced_search();
             }
 

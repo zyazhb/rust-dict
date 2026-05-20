@@ -47,6 +47,8 @@ pub struct DictApp {
     pub(crate) window_title: String,
     pub(crate) ui_mode: UiMode,
     pub(crate) last_viewport: Option<crate::float::ViewportLayout>,
+    /// After expanding from the float icon, focus the compact search field.
+    pub(crate) float_focus_search: bool,
 }
 
 struct OnlineSearchResult {
@@ -111,6 +113,7 @@ impl DictApp {
             window_title,
             ui_mode: UiMode::Float(FloatState::Collapsed),
             last_viewport: None,
+            float_focus_search: false,
         }
     }
 
@@ -627,12 +630,19 @@ impl DictApp {
 }
 
 fn default_cedict_path() -> String {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data/cedict.db")
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from("data/cedict.db"))
-        .to_string_lossy()
-        .into_owned()
+    #[cfg(feature = "bundled-dict")]
+    {
+        return crate::bundled::default_cedict_path();
+    }
+    #[cfg(not(feature = "bundled-dict"))]
+    {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/cedict.db")
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from("data/cedict.db"))
+            .to_string_lossy()
+            .into_owned()
+    }
 }
 
 fn simple_hash(s: &str) -> u64 {
