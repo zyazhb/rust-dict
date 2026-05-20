@@ -1,0 +1,14 @@
+[package]
+name = "dict-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dict-db = { path = "../dict-db" }
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+unicode-normalization.workspace = true
+jieba-rs.workspace = true
+ureq.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "dict-app"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "dict-app"
+path = "src/main.rs"
+
+[dependencies]
+dict-core = { path = "../dict-core" }
+dict-db = { path = "../dict-db" }
+eframe = { version = "0.31", default-features = true }
+egui = "0.31"
+dirs.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

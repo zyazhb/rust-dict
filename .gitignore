@@ -1,0 +1,6 @@
+/target/
+/data/*.db
+/data/*.u8
+/data/*.zip
+/tests/fixtures/*.db
+*.db

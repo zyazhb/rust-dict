@@ -1,0 +1,14 @@
+[package]
+name = "import_cedict"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "import_cedict"
+path = "src/main.rs"
+
+[dependencies]
+dict-db = { path = "../../crates/dict-db" }
+cedict.workspace = true
+rusqlite.workspace = true
+unicode-normalization.workspace = true
