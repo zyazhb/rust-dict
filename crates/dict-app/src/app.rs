@@ -52,6 +52,7 @@ pub struct DictApp {
     pub(crate) float_focus_search: bool,
     /// Previous frame viewport focus (compact expanded auto-collapses on blur).
     pub(crate) float_viewport_focused: Option<bool>,
+    pub(crate) float_resize: Option<crate::float::FloatResizeAnim>,
     hotkeys: Option<GlobalHotkeys>,
     hotkey_capturing: bool,
 }
@@ -125,6 +126,7 @@ impl DictApp {
             last_viewport: None,
             float_focus_search: false,
             float_viewport_focused: None,
+            float_resize: None,
             hotkeys,
             hotkey_capturing: false,
         }
@@ -172,6 +174,10 @@ impl DictApp {
 
     /// Schedule repaints only when the UI is actively changing.
     fn schedule_repaint_if_needed(&self, ctx: &egui::Context) {
+        if self.float_resize.is_some() {
+            return;
+        }
+
         const DEBOUNCE: Duration = Duration::from_millis(300);
         let mut wait = None;
 

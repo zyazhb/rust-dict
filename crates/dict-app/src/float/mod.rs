@@ -1,4 +1,5 @@
 mod drag;
+mod resize_anim;
 
 use eframe::egui::{
     self, vec2, Color32, Frame, Id, Pos2, Rect, RichText, Sense, Stroke, StrokeKind,
@@ -6,13 +7,13 @@ use eframe::egui::{
 };
 
 use dict_db::SearchMode;
-
 use crate::app::DictApp;
 
 pub use drag::{handle_native_window_drag, is_plain_click};
+pub use resize_anim::{FloatAnimTarget, FloatResizeAnim};
 
-const ICON_SIZE: f32 = 52.0;
-const EXPANDED_SIZE: egui::Vec2 = egui::vec2(320.0, 400.0);
+pub(crate) const ICON_SIZE: f32 = 52.0;
+pub(crate) const EXPANDED_SIZE: egui::Vec2 = egui::vec2(320.0, 400.0);
 const FULL_SIZE: egui::Vec2 = egui::vec2(960.0, 640.0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +36,28 @@ pub(crate) enum ViewportLayout {
 }
 
 impl DictApp {
+    fn tick_float_resize_anim(&mut self, ctx: &egui::Context) {
+        let Some(mut anim) = self.float_resize.take() else {
+            return;
+        };
+        if resize_anim::tick(ctx, &mut anim) {
+            self.float_resize = Some(anim);
+            return;
+        }
+        self.float_resize = None;
+        self.ui_mode = resize_anim::ui_mode_for_target(anim.target);
+        self.last_viewport = None;
+        self.sync_viewport(ctx);
+        if matches!(anim.target, FloatAnimTarget::Expanded) {
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+        }
+        ctx.request_repaint();
+    }
+
     fn collapse_float_on_blur(&mut self, ctx: &egui::Context) {
+        if self.float_resize.is_some() {
+            return;
+        }
         if !matches!(self.ui_mode, UiMode::Float(FloatState::Expanded)) {
             self.float_viewport_focused = None;
             return;
@@ -49,21 +71,38 @@ impl DictApp {
     }
 
     pub fn update_float(&mut self, ctx: &egui::Context) {
+        self.tick_float_resize_anim(ctx);
         self.collapse_float_on_blur(ctx);
         self.sync_viewport(ctx);
+        if self.float_resize.is_some() {
+            self.ui_float_collapsed(ctx);
+            return;
+        }
         match self.ui_mode {
             UiMode::Float(FloatState::Collapsed) => self.ui_float_collapsed(ctx),
             UiMode::Float(FloatState::Expanded) => self.ui_float_expanded(ctx),
             UiMode::Full => {}
         }
+
+        if self.float_resize.is_some()
+            || (matches!(self.ui_mode, UiMode::Float(FloatState::Collapsed))
+                && resize_anim::needs_icon_settle(ctx))
+        {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
     }
 
     pub fn expand_float(&mut self, ctx: &egui::Context) {
-        self.ui_mode = UiMode::Float(FloatState::Expanded);
         self.float_focus_search = true;
         self.float_viewport_focused = Some(ctx.input(|i| i.focused));
-        self.sync_viewport(ctx);
-        ctx.send_viewport_cmd(ViewportCommand::Focus);
+        let from = resize_anim::viewport_inner_size(ctx, resize_anim::collapsed_fallback_size());
+        self.float_resize = Some(FloatResizeAnim::new(
+            from,
+            resize_anim::expanded_fallback_size(),
+            FloatAnimTarget::Expanded,
+        ));
+        self.ui_mode = UiMode::Float(FloatState::Collapsed);
+        self.last_viewport = None;
         ctx.request_repaint();
     }
 
@@ -75,10 +114,16 @@ impl DictApp {
     }
 
     pub fn collapse_float(&mut self, ctx: &egui::Context) {
-        self.ui_mode = UiMode::Float(FloatState::Collapsed);
         self.float_focus_search = false;
         self.float_viewport_focused = None;
-        self.sync_viewport(ctx);
+        let from = resize_anim::viewport_inner_size(ctx, resize_anim::expanded_fallback_size());
+        self.float_resize = Some(FloatResizeAnim::new(
+            from,
+            resize_anim::collapsed_fallback_size(),
+            FloatAnimTarget::Collapsed,
+        ));
+        self.ui_mode = UiMode::Float(FloatState::Collapsed);
+        self.last_viewport = None;
         ctx.request_repaint();
     }
 
@@ -90,6 +135,9 @@ impl DictApp {
     }
 
     fn sync_viewport(&mut self, ctx: &egui::Context) {
+        if self.float_resize.is_some() {
+            return;
+        }
         let layout = match self.ui_mode {
             UiMode::Float(FloatState::Collapsed) => ViewportLayout::FloatCollapsed,
             UiMode::Float(FloatState::Expanded) => ViewportLayout::FloatExpanded,
@@ -130,24 +178,28 @@ impl DictApp {
 
     /// Compact float icon: drag anywhere on the circle, click without moving to expand.
     fn ui_float_collapsed(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default()
-            .frame(Frame::NONE.fill(Color32::from_rgb(45, 125, 210)))
-            .show(ctx, |ui| {
-                let rect = ui.max_rect();
-                let response =
-                    ui.interact(rect, Id::new("float_icon"), Sense::click_and_drag());
-
-                let center = rect.center();
-                let painter = ui.painter();
-                painter.circle_filled(center, 22.0, Color32::from_rgb(30, 100, 180));
-                painter.circle_stroke(center, 22.0, Stroke::new(1.5, Color32::WHITE));
-                paint_dict_search_icon(painter, center, Color32::WHITE);
-
-                handle_native_window_drag(ctx, &response);
-                if is_plain_click(&response) {
-                    self.expand_float(ctx);
-                }
+        egui::CentralPanel::default().frame(Frame::NONE).show(ctx, |ui| {
+            let icon_rect = resize_anim::icon_layout_rect(ui.max_rect());
+            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(icon_rect), |ui| {
+                Frame::new()
+                    .fill(Color32::from_rgb(45, 125, 210))
+                    .corner_radius(ICON_SIZE * 0.5)
+                    .show(ui, |ui| {
+                        let rect = ui.max_rect();
+                        let response =
+                            ui.interact(rect, Id::new("float_icon"), Sense::click_and_drag());
+                        let center = rect.center();
+                        let painter = ui.painter();
+                        painter.circle_filled(center, 22.0, Color32::from_rgb(30, 100, 180));
+                        painter.circle_stroke(center, 22.0, Stroke::new(1.5, Color32::WHITE));
+                        paint_dict_search_icon(painter, center, Color32::WHITE);
+                        handle_native_window_drag(ctx, &response);
+                        if self.float_resize.is_none() && is_plain_click(&response) {
+                            self.expand_float(ctx);
+                        }
+                    });
             });
+        });
     }
 
     /// Expanded panel: dedicated drag bar; buttons stay clickable below it.

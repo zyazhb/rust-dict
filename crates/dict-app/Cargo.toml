@@ -11,11 +11,15 @@ path = "src/main.rs"
 default = []
 bundled-dict = []
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(feature, values(\"bundled-dict\"))"] }
+
 [dependencies]
 dict-core = { path = "../dict-core" }
 dict-db = { path = "../dict-db" }
-eframe = { version = "0.31", default-features = true }
+eframe = { version = "0.31", default-features = false, features = ["glow", "default_fonts"] }
 egui = "0.31"
+memmap2 = "0.9"
 dirs.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

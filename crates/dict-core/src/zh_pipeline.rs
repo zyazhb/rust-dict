@@ -1,5 +1,4 @@
 use dict_db::CedictDb;
-use jieba_rs::Jieba;
 
 use crate::normalize::{is_pinyin_input, normalize_query};
 use crate::pinyin::pinyin_search_keys;
@@ -8,17 +7,8 @@ use crate::Result;
 
 const MAX_RESULTS: usize = 50;
 
-pub struct ZhToEnPipeline {
-    jieba: Jieba,
-}
-
-impl Default for ZhToEnPipeline {
-    fn default() -> Self {
-        Self {
-            jieba: Jieba::new(),
-        }
-    }
-}
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ZhToEnPipeline;
 
 impl ZhToEnPipeline {
     pub fn search(
@@ -43,24 +33,6 @@ impl ZhToEnPipeline {
             }
         } else {
             self.collect_phrase_matches(db, &q, use_trad, &mut raw);
-            if raw.is_empty() {
-                let tokens: Vec<String> = self
-                    .jieba
-                    .cut(&q, false)
-                    .into_iter()
-                    .map(|s| s.to_string())
-                    .collect();
-                for token in &tokens {
-                    for e in db.lookup_exact(token, use_trad)? {
-                        raw.push((e, MatchKind::TokenExact, token.clone()));
-                    }
-                }
-                if tokens.len() > 1 {
-                    for e in db.lookup_exact(&q, use_trad)? {
-                        raw.push((e, MatchKind::PhraseExact, q.clone()));
-                    }
-                }
-            }
         }
 
         let ctx = RankContext::new(&q, boosts);

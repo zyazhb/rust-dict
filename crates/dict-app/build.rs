@@ -2,6 +2,8 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    println!("cargo::rustc-check-cfg=cfg(feature, values(\"bundled-dict\"))");
+
     if env::var("CARGO_FEATURE_BUNDLED_DICT").is_err() {
         return;
     }

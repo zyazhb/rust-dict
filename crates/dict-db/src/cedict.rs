@@ -8,9 +8,18 @@ pub struct CedictDb {
     conn: Connection,
 }
 
+fn tune_readonly(conn: &Connection) -> Result<()> {
+    // Map dictionary pages from disk instead of a large heap cache.
+    conn.pragma_update(None, "mmap_size", 67_108_864)?;
+    conn.pragma_update(None, "cache_size", -2048)?;
+    conn.pragma_update(None, "temp_store", "memory")?;
+    Ok(())
+}
+
 impl CedictDb {
     pub fn open_readonly(path: &str) -> Result<Self> {
         let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        tune_readonly(&conn)?;
         Ok(Self { conn })
     }
 
