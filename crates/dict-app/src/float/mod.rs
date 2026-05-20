@@ -1,8 +1,15 @@
-use eframe::egui::{self, vec2, Color32, Frame, Id, RichText, Sense, Stroke, ViewportCommand, WindowLevel};
+mod drag;
+
+use eframe::egui::{
+    self, vec2, Color32, Frame, Id, Pos2, Rect, RichText, Sense, Stroke, StrokeKind,
+    ViewportCommand, WindowLevel,
+};
 
 use dict_db::SearchMode;
 
 use crate::app::DictApp;
+
+pub use drag::{handle_native_window_drag, is_plain_click};
 
 const ICON_SIZE: f32 = 52.0;
 const EXPANDED_SIZE: egui::Vec2 = egui::vec2(320.0, 400.0);
@@ -96,66 +103,32 @@ impl DictApp {
         }
     }
 
+    /// Compact float icon: drag anywhere on the circle, click without moving to expand.
     fn ui_float_collapsed(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default()
             .frame(Frame::NONE.fill(Color32::from_rgb(45, 125, 210)))
             .show(ctx, |ui| {
-                ui.centered_and_justified(|ui| {
-                    let size = vec2(ICON_SIZE - 4.0, ICON_SIZE - 4.0);
-                    let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
-                    let painter = ui.painter();
-                    painter.circle_filled(rect.center(), 22.0, Color32::from_rgb(30, 100, 180));
-                    painter.circle_stroke(rect.center(), 22.0, Stroke::new(1.5, Color32::WHITE));
-                    painter.text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "查",
-                        egui::FontId::proportional(22.0),
-                        Color32::WHITE,
-                    );
+                let rect = ui.max_rect();
+                let response =
+                    ui.interact(rect, Id::new("float_icon"), Sense::click_and_drag());
 
-                    if response.drag_started() {
-                        ctx.send_viewport_cmd(ViewportCommand::StartDrag);
-                    }
-                    if response.clicked() {
-                        self.expand_float(ctx);
-                    }
-                });
+                let center = rect.center();
+                let painter = ui.painter();
+                painter.circle_filled(center, 22.0, Color32::from_rgb(30, 100, 180));
+                painter.circle_stroke(center, 22.0, Stroke::new(1.5, Color32::WHITE));
+                paint_dict_search_icon(painter, center, Color32::WHITE);
+
+                handle_native_window_drag(ctx, &response);
+                if is_plain_click(&response) {
+                    self.expand_float(ctx);
+                }
             });
     }
 
+    /// Expanded panel: dedicated drag bar; buttons stay clickable below it.
     fn ui_float_expanded(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let header = egui::Area::new(Id::new("float_drag"))
-                    .show(ui.ctx(), |ui| {
-                        ui.horizontal(|ui| {
-                            let (r, resp) =
-                                ui.allocate_exact_size(vec2(24.0, 20.0), Sense::click_and_drag());
-                            ui.painter().text(
-                                r.center(),
-                                egui::Align2::CENTER_CENTER,
-                                "⠿",
-                                egui::FontId::proportional(14.0),
-                                ui.visuals().weak_text_color(),
-                            );
-                            if resp.drag_started() {
-                                ctx.send_viewport_cmd(ViewportCommand::StartDrag);
-                            }
-                            ui.label(RichText::new(self.i18n.t("app_title")).strong());
-                        });
-                    })
-                    .response;
-                let _ = header;
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button(self.i18n.t("float_full")).clicked() {
-                        self.enter_full_mode(ctx);
-                    }
-                    if ui.small_button(self.i18n.t("float_collapse")).clicked() {
-                        self.collapse_float(ctx);
-                    }
-                });
-            });
+            ui_float_expanded_header(ctx, ui, self);
             ui.separator();
 
             ui.horizontal(|ui| {
@@ -231,4 +204,55 @@ impl DictApp {
             }
         });
     }
+}
+
+/// Title row: left = drag handle + title, right = action buttons (no overlap).
+fn ui_float_expanded_header(ctx: &egui::Context, ui: &mut egui::Ui, app: &mut DictApp) {
+    ui.horizontal(|ui| {
+        let full_w = ui.available_width();
+        let button_w = 76.0;
+        let drag_w = (full_w - button_w).max(80.0);
+
+        let (drag_rect, drag_resp) =
+            ui.allocate_exact_size(vec2(drag_w, 28.0), Sense::drag());
+        handle_native_window_drag(ctx, &drag_resp);
+
+        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(drag_rect), |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("⠿").weak());
+                ui.label(RichText::new(app.i18n.t("app_title")).strong());
+            });
+        });
+
+        ui.allocate_ui_with_layout(
+            vec2(button_w, 28.0),
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                if ui.small_button(app.i18n.t("float_collapse")).clicked() {
+                    app.collapse_float(ctx);
+                }
+                if ui.small_button(app.i18n.t("float_full")).clicked() {
+                    app.enter_full_mode(ctx);
+                }
+            },
+        );
+    });
+}
+
+fn paint_dict_search_icon(painter: &egui::Painter, center: Pos2, color: Color32) {
+    let stroke = Stroke::new(2.0, color);
+    let book = Rect::from_center_size(center + vec2(-5.0, 3.0), vec2(13.0, 15.0));
+    painter.rect_stroke(book, 1.5, stroke, StrokeKind::Middle);
+    painter.line_segment(
+        [
+            book.left_top() + vec2(4.0, 2.0),
+            book.left_bottom() - vec2(-4.0, 2.0),
+        ],
+        stroke,
+    );
+
+    let lens = center + vec2(7.0, -5.0);
+    painter.circle_stroke(lens, 6.5, stroke);
+    let handle = lens + vec2(4.5, 4.5);
+    painter.line_segment([handle, handle + vec2(7.0, 7.0)], stroke);
 }

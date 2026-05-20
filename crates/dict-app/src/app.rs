@@ -124,7 +124,7 @@ impl DictApp {
         self.window_title = self.i18n.t("app_title").to_string();
     }
 
-    /// Only schedule repaints while debouncing search or waiting on online I/O.
+    /// Schedule repaints only when the UI is actively changing.
     fn schedule_repaint_if_needed(&self, ctx: &egui::Context) {
         const DEBOUNCE: Duration = Duration::from_millis(300);
         let mut wait = None;
