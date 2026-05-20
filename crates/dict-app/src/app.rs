@@ -43,6 +43,7 @@ pub struct DictApp {
     cedict_path_edit: String,
     i18n: I18n,
     locale_edit: Locale,
+    window_title: String,
 }
 
 struct OnlineSearchResult {
@@ -74,6 +75,7 @@ impl DictApp {
             settings.locale = locale.as_str().to_string();
         }
         let i18n = I18n::new(locale);
+        let window_title = i18n.t("app_title").to_string();
         let locale_edit = locale;
         let status = if cedict.is_some() {
             i18n.status_ready()
@@ -103,12 +105,40 @@ impl DictApp {
             cedict_path_edit,
             i18n,
             locale_edit,
+            window_title,
         }
+    }
+
+    pub fn window_title(&self) -> String {
+        self.window_title.clone()
     }
 
     fn apply_locale(&mut self) {
         self.settings.locale = self.locale_edit.as_str().to_string();
         self.i18n = I18n::new(self.locale_edit);
+        self.window_title = self.i18n.t("app_title").to_string();
+    }
+
+    /// Only schedule repaints while debouncing search or waiting on online I/O.
+    fn schedule_repaint_if_needed(&self, ctx: &egui::Context) {
+        const DEBOUNCE: Duration = Duration::from_millis(300);
+        let mut wait = None;
+
+        if self.pending_search {
+            if let Some(started) = self.last_search_at {
+                wait = Some(DEBOUNCE.saturating_sub(started.elapsed()));
+            }
+        }
+        if self.online_rx.is_some() {
+            wait = Some(match wait {
+                Some(d) => d.min(Duration::from_millis(250)),
+                None => Duration::from_millis(250),
+            });
+        }
+
+        if let Some(delay) = wait {
+            ctx.request_repaint_after(delay.max(Duration::from_millis(32)));
+        }
     }
 
     fn reload_cedict(&mut self) {
@@ -308,10 +338,6 @@ impl eframe::App for DictApp {
             }
         }
 
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(
-            self.i18n.t("app_title").to_string(),
-        ));
-
         let side_w = if self.i18n.locale == Locale::Zh { 130.0 } else { 120.0 };
         egui::SidePanel::left("nav")
             .resizable(false)
@@ -356,7 +382,7 @@ impl eframe::App for DictApp {
             AppTab::Settings => self.ui_settings(ui),
         });
 
-        ctx.request_repaint_after(Duration::from_millis(100));
+        self.schedule_repaint_if_needed(ctx);
     }
 }
 
@@ -397,27 +423,22 @@ impl DictApp {
             self.schedule_debounced_search();
         }
 
+        let mut save_at: Option<usize> = None;
+        let n = self.results.len();
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for (i, c) in self.results.clone().iter().enumerate() {
+            for i in 0..n {
+                let c = &self.results[i];
                 let chinese = if self.settings.show_traditional {
-                    &c.entry.trad
+                    c.entry.trad.as_str()
                 } else {
-                    &c.entry.simp
+                    c.entry.simp.as_str()
                 };
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         ui.heading(&c.english);
                         ui.label(format!("{chinese} [{}]", c.entry.pinyin));
                         if ui.button(self.i18n.t("save")).clicked() {
-                            let _ = self.user.save_word(
-                                &c.english,
-                                chinese,
-                                &c.entry.pinyin,
-                                &c.sense,
-                                "",
-                            );
-                            self.status = self.i18n.status_saved();
-                            self.refresh_saved();
+                            save_at = Some(i);
                         }
                     });
                     ui.label(&c.sense);
@@ -440,17 +461,35 @@ impl DictApp {
                         ));
                     }
                 });
-                if i + 1 < self.results.len() {
+                if i + 1 < n {
                     ui.separator();
                 }
             }
         });
+        if let Some(i) = save_at {
+            let c = &self.results[i];
+            let chinese = if self.settings.show_traditional {
+                c.entry.trad.as_str()
+            } else {
+                c.entry.simp.as_str()
+            };
+            let _ = self.user.save_word(
+                &c.english,
+                chinese,
+                &c.entry.pinyin,
+                &c.sense,
+                "",
+            );
+            self.status = self.i18n.status_saved();
+            self.refresh_saved();
+        }
     }
 
     fn ui_history(&mut self, ui: &mut egui::Ui) {
         ui.heading(self.i18n.t("history_heading"));
+        let mut replay: Option<(String, SearchMode)> = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for h in self.history.clone() {
+            for h in &self.history {
                 let mode_label = if h.mode == SearchMode::ZhToEn {
                     self.i18n.t("hist_zh_en")
                 } else {
@@ -458,13 +497,16 @@ impl DictApp {
                 };
                 let label = format!("{} — {}", h.query, mode_label);
                 if ui.button(label).clicked() {
-                    self.query = h.query;
-                    self.search_mode = h.mode;
-                    self.tab = AppTab::Search;
-                    self.run_search(false);
+                    replay = Some((h.query.clone(), h.mode));
                 }
             }
         });
+        if let Some((query, mode)) = replay {
+            self.query = query;
+            self.search_mode = mode;
+            self.tab = AppTab::Search;
+            self.run_search(false);
+        }
     }
 
     fn ui_saved(&mut self, ui: &mut egui::Ui) {
@@ -474,8 +516,11 @@ impl DictApp {
                 .hint_text(self.i18n.t("filter_hint")),
         );
         let filter = self.saved_filter.to_lowercase();
+        let mut save_note_id: Option<i64> = None;
+        let mut edit_note: Option<(i64, String)> = None;
+        let mut delete_id: Option<i64> = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for w in self.saved.clone() {
+            for w in &self.saved {
                 if !filter.is_empty()
                     && !w.english.to_lowercase().contains(&filter)
                     && !w.chinese.contains(&filter)
@@ -491,21 +536,30 @@ impl DictApp {
                     if self.note_edit_id == Some(w.id) {
                         ui.text_edit_multiline(&mut self.note_edit_text);
                         if ui.button(self.i18n.t("save_note")).clicked() {
-                            let _ = self.user.update_note(w.id, &self.note_edit_text);
-                            self.note_edit_id = None;
-                            self.refresh_saved();
+                            save_note_id = Some(w.id);
                         }
                     } else if ui.button(self.i18n.t("edit_note")).clicked() {
-                        self.note_edit_id = Some(w.id);
-                        self.note_edit_text = w.note.clone();
+                        edit_note = Some((w.id, w.note.clone()));
                     }
                     if ui.button(self.i18n.t("delete")).clicked() {
-                        let _ = self.user.delete_saved(w.id);
-                        self.refresh_saved();
+                        delete_id = Some(w.id);
                     }
                 });
             }
         });
+        if let Some(id) = save_note_id {
+            let _ = self.user.update_note(id, &self.note_edit_text);
+            self.note_edit_id = None;
+            self.refresh_saved();
+        }
+        if let Some((id, note)) = edit_note {
+            self.note_edit_id = Some(id);
+            self.note_edit_text = note;
+        }
+        if let Some(id) = delete_id {
+            let _ = self.user.delete_saved(id);
+            self.refresh_saved();
+        }
     }
 
     fn ui_settings(&mut self, ui: &mut egui::Ui) {
@@ -518,6 +572,8 @@ impl DictApp {
         });
         if self.locale_edit != prev_locale {
             self.apply_locale();
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Title(self.window_title.clone()));
         }
         ui.separator();
         ui.label(self.i18n.t("cedict_path"));
@@ -547,6 +603,7 @@ impl DictApp {
             self.settings.cedict_path = self.cedict_path_edit.clone();
             let _ = self.user.save_settings(&self.settings);
             self.status = self.i18n.status_settings_saved();
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(self.window_title.clone()));
         }
         ui.separator();
         ui.label(self.i18n.t("license"));

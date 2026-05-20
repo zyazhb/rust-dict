@@ -3,6 +3,7 @@ mod fonts;
 mod i18n;
 
 use app::DictApp;
+use eframe::egui;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
@@ -14,7 +15,13 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             fonts::setup_cjk_fonts(&cc.egui_ctx);
-            Ok(Box::new(DictApp::new(cc)))
+            cc.egui_ctx.options_mut(|o| {
+                o.max_passes = std::num::NonZeroUsize::new(1).unwrap();
+            });
+            let app = DictApp::new(cc);
+            cc.egui_ctx
+                .send_viewport_cmd(egui::ViewportCommand::Title(app.window_title()));
+            Ok(Box::new(app))
         }),
     )
 }
