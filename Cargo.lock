@@ -1716,6 +1716,7 @@ name = "import_cedict"
 version = "0.1.0"
 dependencies = [
  "cedict",
+ "dict-core",
  "dict-db",
  "rusqlite",
  "unicode-normalization",

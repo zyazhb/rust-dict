@@ -8,6 +8,7 @@ name = "import_cedict"
 path = "src/main.rs"
 
 [dependencies]
+dict-core = { path = "../../crates/dict-core" }
 dict-db = { path = "../../crates/dict-db" }
 cedict.workspace = true
 rusqlite.workspace = true

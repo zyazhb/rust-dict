@@ -35,15 +35,42 @@ impl CedictDb {
             .map_err(DbError::from)
     }
 
-    pub fn lookup_pinyin(&self, pinyin_norm: &str) -> Result<Vec<CedictEntry>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, trad, simp, pinyin, pinyin_norm, definition FROM entries
-             WHERE pinyin_norm = ?1 OR pinyin_norm LIKE ?2 LIMIT 50",
-        )?;
-        let prefix = format!("{pinyin_norm}%");
-        let rows = stmt.query_map(params![pinyin_norm, prefix], row_to_entry)?;
-        rows.collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(DbError::from)
+    pub fn lookup_pinyin(&self, keys: &[String]) -> Result<Vec<CedictEntry>> {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        let sql = "SELECT id, trad, simp, pinyin, pinyin_norm, definition FROM entries
+             WHERE pinyin_norm = ?1 OR pinyin_norm LIKE ?2
+                OR pinyin_fuzzy = ?3 OR pinyin_fuzzy LIKE ?4
+             LIMIT 50";
+        let mut stmt = self.conn.prepare(sql)?;
+        for key in keys {
+            if key.is_empty() {
+                continue;
+            }
+            let norm_prefix = format!("{key}%");
+            let fuzzy = key
+                .chars()
+                .filter(|c| c.is_ascii_alphabetic())
+                .collect::<String>();
+            if fuzzy.is_empty() {
+                continue;
+            }
+            let fuzzy_prefix = format!("{fuzzy}%");
+            let rows = stmt.query_map(
+                params![key, norm_prefix, fuzzy, fuzzy_prefix],
+                row_to_entry,
+            )?;
+            for row in rows {
+                let entry = row?;
+                if seen.insert(entry.id) {
+                    out.push(entry);
+                }
+            }
+            if out.len() >= 50 {
+                break;
+            }
+        }
+        Ok(out)
     }
 
     pub fn lookup_english_prefix(&self, prefix: &str) -> Result<Vec<CedictEntry>> {

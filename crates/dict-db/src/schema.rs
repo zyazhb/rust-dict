@@ -36,12 +36,14 @@ CREATE TABLE entries (
     simp TEXT NOT NULL,
     pinyin TEXT NOT NULL,
     pinyin_norm TEXT NOT NULL,
+    pinyin_fuzzy TEXT NOT NULL,
     definition TEXT NOT NULL
 );
 
 CREATE INDEX idx_entries_simp ON entries(simp);
 CREATE INDEX idx_entries_trad ON entries(trad);
 CREATE INDEX idx_entries_pinyin_norm ON entries(pinyin_norm);
+CREATE INDEX idx_entries_pinyin_fuzzy ON entries(pinyin_fuzzy);
 
 CREATE VIRTUAL TABLE entries_fts USING fts5(
     definition,

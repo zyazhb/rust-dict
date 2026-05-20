@@ -2,7 +2,7 @@ use dict_db::CedictDb;
 use jieba_rs::Jieba;
 
 use crate::normalize::{is_pinyin_input, normalize_query};
-use crate::pinyin::normalize_pinyin;
+use crate::pinyin::pinyin_search_keys;
 use crate::rank::{MatchKind, RankContext, RankedCandidate, rank_candidates};
 use crate::Result;
 
@@ -37,8 +37,8 @@ impl ZhToEnPipeline {
         let mut raw = Vec::new();
 
         if pinyin_mode || is_pinyin_input(&q) {
-            let norm = normalize_pinyin(&q);
-            for e in db.lookup_pinyin(&norm)? {
+            let keys = pinyin_search_keys(&q);
+            for e in db.lookup_pinyin(&keys)? {
                 raw.push((e, MatchKind::Pinyin, q.clone()));
             }
         } else {

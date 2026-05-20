@@ -3,6 +3,7 @@ use std::fs::File;
 use std::path::Path;
 
 use cedict::parse_reader;
+use dict_core::{cedict_pinyin_norm, fuzzy_compact_from_norm};
 use dict_db::schema::CEDICT_SCHEMA;
 use rusqlite::Connection;
 
@@ -31,8 +32,8 @@ fn main() {
         {
             let mut insert = tx
                 .prepare(
-                    "INSERT INTO entries (id, trad, simp, pinyin, pinyin_norm, definition)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    "INSERT INTO entries (id, trad, simp, pinyin, pinyin_norm, pinyin_fuzzy, definition)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 )
                 .expect("insert stmt");
             let mut lemma_insert = tx
@@ -43,6 +44,7 @@ fn main() {
                 count += 1;
                 let id = count as i64;
                 let pinyin_norm = cedict_pinyin_norm(entry.pinyin());
+                let pinyin_fuzzy = fuzzy_compact_from_norm(&pinyin_norm);
                 let defs: Vec<&str> = entry.definitions().collect();
                 let def_slash = format!("/{} /", defs.join("/"));
                 insert
@@ -52,6 +54,7 @@ fn main() {
                         entry.simplified(),
                         entry.pinyin(),
                         pinyin_norm,
+                        pinyin_fuzzy,
                         def_slash,
                     ])
                     .expect("insert entry");
@@ -80,15 +83,6 @@ fn arg(args: &[String], flag: &str) -> Option<String> {
         .position(|a| a == flag)
         .and_then(|i| args.get(i + 1))
         .cloned()
-}
-
-fn cedict_pinyin_norm(pinyin: &str) -> String {
-    pinyin
-        .to_lowercase()
-        .split_whitespace()
-        .map(|syllable| syllable.to_string())
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn extract_import_lemmas(definition: &str) -> Vec<String> {
