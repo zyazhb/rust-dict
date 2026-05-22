@@ -18,6 +18,7 @@ pub use pinyin::{
     cedict_pinyin_norm, fuzzy_compact_from_norm, fuzzy_compact_from_query, normalize_pinyin,
     pinyin_search_keys,
 };
+pub use normalize::normalize_query;
 pub use rank::{MatchKind, RankBadge, RankedCandidate};
 pub use router::QueryRouter;
 pub use zh_pipeline::ZhToEnPipeline;

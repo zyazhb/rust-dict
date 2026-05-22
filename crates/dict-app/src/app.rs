@@ -4,8 +4,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use dict_core::{
-    dto_to_ranked, HttpOnlineProvider, MockOnlineProvider, OnlineProvider, QueryRouter,
-    RankBadge, RankedCandidate,
+    dto_to_ranked, HttpOnlineProvider, MockOnlineProvider, normalize_query, OnlineProvider,
+    QueryRouter, RankedCandidate,
 };
 use dict_db::{AppSettings, CedictDb, HistoryRecord, SavedWord, SearchMode, UserDb};
 use eframe::egui;
@@ -13,6 +13,10 @@ use eframe::egui;
 use crate::float::{FloatState, UiMode};
 use crate::hotkey::GlobalHotkeys;
 use crate::i18n::{I18n, Locale};
+use crate::search_ui::{
+    save_result_at, ui_query_field, ui_search_actions, ui_search_mode_controls, ui_search_results,
+    QueryFieldOpts, ResultsStyle,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppTab {
@@ -215,22 +219,34 @@ impl DictApp {
         }
     }
 
-    fn refresh_saved(&mut self) {
+    pub(crate) fn refresh_saved(&mut self) {
         if let Ok(s) = self.user.list_saved() {
             self.saved = s;
         }
     }
 
-    fn run_search(&mut self, force_online: bool) {
-        let Some(cedict) = self.cedict.as_ref() else {
+    fn cancel_online_search(&mut self) {
+        self.online_rx = None;
+    }
+
+    fn current_query_normalized(&self) -> String {
+        normalize_query(&self.query)
+    }
+
+    pub(crate) fn run_search(&mut self, force_online: bool) {
+        if self.cedict.is_none() {
             self.status = self.i18n.status_load_dict_first();
             return;
-        };
-        let q = self.query.trim().to_string();
+        }
+        let q = self.current_query_normalized();
         if q.is_empty() {
+            self.cancel_online_search();
             self.results.clear();
             return;
         }
+        self.cancel_online_search();
+
+        let cedict = self.cedict.as_ref().expect("cedict checked above");
 
         let online_enabled = self.settings.online_enabled;
         let threshold = self.settings.online_score_threshold;
@@ -297,6 +313,8 @@ impl DictApp {
     }
 
     fn start_online_search(&mut self, query: String, mut local: Vec<RankedCandidate>) {
+        let query = normalize_query(&query);
+        self.results = local.clone();
         let provider = self.online_provider();
         let user_path = self.user_db_path();
         let (tx, rx) = mpsc::channel();
@@ -359,6 +377,9 @@ impl DictApp {
         };
         if let Ok(msg) = rx.try_recv() {
             self.online_rx = None;
+            if msg.query != self.current_query_normalized() {
+                return;
+            }
             if let Some(err) = msg.error {
                 self.status = err;
             } else {
@@ -456,99 +477,15 @@ impl eframe::App for DictApp {
 impl DictApp {
     fn ui_search(&mut self, ui: &mut egui::Ui) {
         ui.heading(self.i18n.t("search_heading"));
-        ui.horizontal(|ui| {
-            ui.selectable_value(
-                &mut self.search_mode,
-                SearchMode::ZhToEn,
-                self.i18n.t("mode_zh_en"),
-            );
-            ui.selectable_value(
-                &mut self.search_mode,
-                SearchMode::EnToCn,
-                self.i18n.t("mode_en_cn"),
-            );
-            if self.search_mode == SearchMode::ZhToEn {
-                ui.checkbox(&mut self.pinyin_mode, self.i18n.t("pinyin"));
-            }
-        });
-        let changed = ui
-            .add(
-                egui::TextEdit::singleline(&mut self.query)
-                    .hint_text(self.i18n.t("query_hint")),
-            )
-            .changed();
-        ui.horizontal(|ui| {
-            if ui.button(self.i18n.t("search_now")).clicked() {
-                self.run_search(false);
-            }
-            if ui.button(self.i18n.t("search_online")).clicked() {
-                self.force_online_next = true;
-                self.run_search(true);
-            }
-        });
+        ui_search_mode_controls(self, ui);
+        let changed = ui_query_field(self, ui, QueryFieldOpts::full_mode());
+        ui_search_actions(self, ui);
         if changed {
             self.schedule_debounced_search();
         }
 
-        let mut save_at: Option<usize> = None;
-        let n = self.results.len();
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for i in 0..n {
-                let c = &self.results[i];
-                let chinese = if self.settings.show_traditional {
-                    c.entry.trad.as_str()
-                } else {
-                    c.entry.simp.as_str()
-                };
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.heading(&c.english);
-                        ui.label(format!("{chinese} [{}]", c.entry.pinyin));
-                        if ui.button(self.i18n.t("save")).clicked() {
-                            save_at = Some(i);
-                        }
-                    });
-                    ui.label(&c.sense);
-                    let badges: Vec<_> = c
-                        .badges
-                        .iter()
-                        .map(|b| match b {
-                            RankBadge::ExactMatch => self.i18n.t("badge_exact"),
-                            RankBadge::CommonWord => self.i18n.t("badge_common"),
-                            RankBadge::SavedBefore => self.i18n.t("badge_saved"),
-                            RankBadge::Online => self.i18n.t("badge_online"),
-                        })
-                        .collect();
-                    if !badges.is_empty() {
-                        ui.label(format!(
-                            "[{}] {} {:.2}",
-                            badges.join(", "),
-                            self.i18n.t("score"),
-                            c.score
-                        ));
-                    }
-                });
-                if i + 1 < n {
-                    ui.separator();
-                }
-            }
-        });
-        if let Some(i) = save_at {
-            let c = &self.results[i];
-            let chinese = if self.settings.show_traditional {
-                c.entry.trad.as_str()
-            } else {
-                c.entry.simp.as_str()
-            };
-            let _ = self.user.save_word(
-                &c.english,
-                chinese,
-                &c.entry.pinyin,
-                &c.sense,
-                "",
-            );
-            self.status = self.i18n.status_saved();
-            self.refresh_saved();
+        if let Some(i) = ui_search_results(self, ui, ResultsStyle::Full) {
+            save_result_at(self, i);
         }
     }
 

@@ -6,11 +6,13 @@ use eframe::egui::{
     ViewportCommand, WindowLevel,
 };
 
-use dict_db::SearchMode;
 use crate::app::DictApp;
+use crate::search_ui::{
+    save_result_at, ui_query_field, ui_search_mode_controls, ui_search_results, QueryFieldOpts,
+    ResultsStyle,
+};
 
-pub use drag::{handle_native_window_drag, is_plain_click};
-pub use resize_anim::{FloatAnimTarget, FloatResizeAnim};
+pub(crate) use resize_anim::FloatResizeAnim;
 
 pub(crate) const ICON_SIZE: f32 = 52.0;
 pub(crate) const EXPANDED_SIZE: egui::Vec2 = egui::vec2(320.0, 400.0);
@@ -48,7 +50,7 @@ impl DictApp {
         self.ui_mode = resize_anim::ui_mode_for_target(anim.target);
         self.last_viewport = None;
         self.sync_viewport(ctx);
-        if matches!(anim.target, FloatAnimTarget::Expanded) {
+        if matches!(anim.target, resize_anim::FloatAnimTarget::Expanded) {
             ctx.send_viewport_cmd(ViewportCommand::Focus);
         }
         ctx.request_repaint();
@@ -84,9 +86,8 @@ impl DictApp {
             UiMode::Full => {}
         }
 
-        if self.float_resize.is_some()
-            || (matches!(self.ui_mode, UiMode::Float(FloatState::Collapsed))
-                && resize_anim::needs_icon_settle(ctx))
+        if matches!(self.ui_mode, UiMode::Float(FloatState::Collapsed))
+            && resize_anim::needs_icon_settle(ctx)
         {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
@@ -99,7 +100,7 @@ impl DictApp {
         self.float_resize = Some(FloatResizeAnim::new(
             from,
             resize_anim::expanded_fallback_size(),
-            FloatAnimTarget::Expanded,
+            resize_anim::FloatAnimTarget::Expanded,
         ));
         self.ui_mode = UiMode::Float(FloatState::Collapsed);
         self.last_viewport = None;
@@ -120,7 +121,7 @@ impl DictApp {
         self.float_resize = Some(FloatResizeAnim::new(
             from,
             resize_anim::collapsed_fallback_size(),
-            FloatAnimTarget::Collapsed,
+            resize_anim::FloatAnimTarget::Collapsed,
         ));
         self.ui_mode = UiMode::Float(FloatState::Collapsed);
         self.last_viewport = None;
@@ -193,8 +194,8 @@ impl DictApp {
                         painter.circle_filled(center, 22.0, Color32::from_rgb(30, 100, 180));
                         painter.circle_stroke(center, 22.0, Stroke::new(1.5, Color32::WHITE));
                         paint_dict_search_icon(painter, center, Color32::WHITE);
-                        handle_native_window_drag(ctx, &response);
-                        if self.float_resize.is_none() && is_plain_click(&response) {
+                        drag::handle_native_window_drag(ctx, &response);
+                        if self.float_resize.is_none() && drag::is_plain_click(&response) {
                             self.expand_float(ctx);
                         }
                     });
@@ -208,81 +209,16 @@ impl DictApp {
             ui_float_expanded_header(ctx, ui, self);
             ui.separator();
 
-            ui.horizontal(|ui| {
-                ui.selectable_value(
-                    &mut self.search_mode,
-                    SearchMode::ZhToEn,
-                    self.i18n.t("mode_zh_en"),
-                );
-                ui.selectable_value(
-                    &mut self.search_mode,
-                    SearchMode::EnToCn,
-                    self.i18n.t("mode_en_cn"),
-                );
-                if self.search_mode == SearchMode::ZhToEn {
-                    ui.checkbox(&mut self.pinyin_mode, self.i18n.t("pinyin"));
-                }
-            });
+            ui_search_mode_controls(self, ui);
 
-            let search_resp = ui.add(
-                egui::TextEdit::singleline(&mut self.query)
-                    .id(Id::new("float_query"))
-                    .hint_text(self.i18n.t("query_hint"))
-                    .desired_width(f32::INFINITY),
-            );
-            if self.float_focus_search {
-                search_resp.request_focus();
-                if search_resp.has_focus() {
-                    self.float_focus_search = false;
-                }
-            }
-            if search_resp.changed() {
+            if ui_query_field(self, ui, QueryFieldOpts::float_mode(self.float_focus_search)) {
                 self.schedule_debounced_search();
             }
 
             ui.label(egui::RichText::new(&self.status).small().weak());
 
-            let mut save_at: Option<usize> = None;
-            let n = self.results.len();
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    for i in 0..n {
-                        let c = &self.results[i];
-                        let chinese = if self.settings.show_traditional {
-                            c.entry.trad.as_str()
-                        } else {
-                            c.entry.simp.as_str()
-                        };
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
-                                    ui.label(RichText::new(&c.english).strong());
-                                    ui.label(format!("{chinese}  {}", c.entry.pinyin));
-                                });
-                                if ui.small_button(self.i18n.t("save")).clicked() {
-                                    save_at = Some(i);
-                                }
-                            });
-                        });
-                    }
-                });
-
-            if let Some(i) = save_at {
-                let c = &self.results[i];
-                let chinese = if self.settings.show_traditional {
-                    c.entry.trad.as_str()
-                } else {
-                    c.entry.simp.as_str()
-                };
-                let _ = self.user.save_word(
-                    &c.english,
-                    chinese,
-                    &c.entry.pinyin,
-                    &c.sense,
-                    "",
-                );
-                self.status = self.i18n.status_saved();
+            if let Some(i) = ui_search_results(self, ui, ResultsStyle::Compact) {
+                save_result_at(self, i);
             }
         });
     }
@@ -297,7 +233,7 @@ fn ui_float_expanded_header(ctx: &egui::Context, ui: &mut egui::Ui, app: &mut Di
 
         let (drag_rect, drag_resp) =
             ui.allocate_exact_size(vec2(drag_w, 28.0), Sense::drag());
-        handle_native_window_drag(ctx, &drag_resp);
+        drag::handle_native_window_drag(ctx, &drag_resp);
 
         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(drag_rect), |ui| {
             ui.horizontal(|ui| {

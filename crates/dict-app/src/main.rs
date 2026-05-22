@@ -5,15 +5,17 @@ mod float;
 mod fonts;
 mod hotkey;
 mod i18n;
+mod search_ui;
 
 use app::DictApp;
 use eframe::egui;
+use float::ICON_SIZE;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([52.0, 52.0])
-            .with_min_inner_size([52.0, 52.0])
+            .with_inner_size([ICON_SIZE, ICON_SIZE])
+            .with_min_inner_size([ICON_SIZE, ICON_SIZE])
             .with_always_on_top()
             .with_decorations(false)
             .with_resizable(false),

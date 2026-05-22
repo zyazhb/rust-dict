@@ -6,6 +6,7 @@ use super::{FloatState, UiMode, EXPANDED_SIZE, ICON_SIZE};
 
 const ANIM_DURATION: Duration = Duration::from_millis(200);
 const ICON_SIZE_EPS: f32 = 6.0;
+const MAX_SETTLE_FRAMES: u32 = 30;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FloatAnimTarget {
@@ -19,6 +20,7 @@ pub struct FloatResizeAnim {
     pub(crate) to: egui::Vec2,
     pub(crate) started: Instant,
     pub(crate) target: FloatAnimTarget,
+    settle_frames: u32,
 }
 
 impl FloatResizeAnim {
@@ -28,6 +30,7 @@ impl FloatResizeAnim {
             to,
             started: Instant::now(),
             target,
+            settle_frames: 0,
         }
     }
 }
@@ -79,6 +82,10 @@ pub fn tick(ctx: &egui::Context, anim: &mut FloatResizeAnim) -> bool {
 
     // OS/winit may apply InnerSize a frame later — keep animating UI until viewport catches up.
     if anim.target == FloatAnimTarget::Collapsed && needs_icon_settle(ctx) {
+        anim.settle_frames += 1;
+        if anim.settle_frames >= MAX_SETTLE_FRAMES {
+            return false;
+        }
         ctx.send_viewport_cmd(ViewportCommand::InnerSize(collapsed_fallback_size()));
         ctx.request_repaint_after(Duration::from_millis(16));
         return true;
